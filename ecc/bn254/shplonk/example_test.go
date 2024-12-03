@@ -33,7 +33,7 @@ func Example_batchOpen() {
 
 	// sample a list of points and a list of polynomials. The i-th polynomial
 	// is opened on the i-th set of points, there might be several points per set.
-	points := make([][]fr.Element, nbPolynomials)
+	points := make([]PointsSet, nbPolynomials)
 	polynomials := make([][]fr.Element, nbPolynomials)
 	for i := 0; i < nbPolynomials; i++ {
 
@@ -42,9 +42,9 @@ func Example_batchOpen() {
 			polynomials[i][j].SetRandom()
 		}
 
-		points[i] = make([]fr.Element, i+1) // random number of point
+		points[i].Points = make([]fr.Element, i+1) // random number of point
 		for j := 0; j < i+1; j++ {
-			points[i][j].SetRandom()
+			points[i].Points[j].SetRandom()
 		}
 	}
 

@@ -67,8 +67,16 @@ func WithNthRoot(elmt fr.Element) PointOption {
 	}
 }
 
+// PointsSet structure describing a set of point. It is just a wrapper around
+// a []fr.Element, with a Config field to describe if the set of points has a
+// particular structure.
+type PointsSet struct {
+	Config PointConfig
+	Points []fr.Element
+}
+
 // BatchOpen opens the list of polynomials on points, where the i-th polynomials is opend at points[i].
-func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points [][]fr.Element, hf hash.Hash, pk kzg.ProvingKey, dataTranscript ...[]byte) (OpeningProof, error) {
+func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points []PointsSet, hf hash.Hash, pk kzg.ProvingKey, dataTranscript ...[]byte) (OpeningProof, error) {
 
 	var res OpeningProof
 
@@ -84,7 +92,8 @@ func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points [][]fr.E
 	fs := fiatshamir.NewTranscript(hf, "gamma", "z")
 
 	// derive γ
-	gamma, err := deriveChallenge("gamma", points, digests, fs, dataTranscript...)
+
+	gamma, err := deriveChallenge("gamma", flatten(points), digests, fs, dataTranscript...)
 	if err != nil {
 		return res, err
 	}
@@ -97,15 +106,15 @@ func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points [][]fr.E
 		}
 	}
 	for i := range points {
-		if len(points[i])+1 > maxSizePolys {
-			maxSizePolys = len(points[i]) + 1
+		if len(points[i].Points)+1 > maxSizePolys {
+			maxSizePolys = len(points[i].Points) + 1
 		}
 	}
 	nbPoints := 0
 	sizeSi := make([]int, len(points))
 	for i := 0; i < nbPolynomials; i++ {
-		nbPoints += len(points[i])
-		sizeSi[i] = len(points[i])
+		nbPoints += len(points[i].Points)
+		sizeSi[i] = len(points[i].Points)
 	}
 	totalSize := maxSizePolys + nbPoints // upper bound of the size of f := ∑ᵢ γⁱZ_{T\Sᵢ}(f_i(X)-r)
 
@@ -114,7 +123,7 @@ func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points [][]fr.E
 	f := make([]fr.Element, totalSize) // cf https://eprint.iacr.org/2020/081.pdf page 11 for notation
 	res.ClaimedValues = make([][]fr.Element, nbPolynomials)
 	for i := 0; i < nbPolynomials; i++ {
-		res.ClaimedValues[i] = make([]fr.Element, len(points[i]))
+		res.ClaimedValues[i] = make([]fr.Element, len(points[i].Points))
 	}
 	var accGamma fr.Element
 	accGamma.SetOne()
@@ -123,14 +132,14 @@ func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points [][]fr.E
 	ri := make([][]fr.Element, nbPolynomials)
 	for i := 0; i < nbPolynomials; i++ {
 
-		for j := 0; j < len(points[i]); j++ {
-			res.ClaimedValues[i][j] = eval(polynomials[i], points[i][j])
+		for j := 0; j < len(points[i].Points); j++ {
+			res.ClaimedValues[i][j] = eval(polynomials[i], points[i].Points[j])
 		}
 
 		ztMinusSi[i] = buildZtMinusSi(points, i)
 
 		copy(bufMaxSizePolynomials, polynomials[i])
-		ri[i] = interpolate(points[i], res.ClaimedValues[i])
+		ri[i] = interpolate(points[i].Points, res.ClaimedValues[i])
 		sub(bufMaxSizePolynomials, ri[i])
 
 		bufTotalSize = mul(bufMaxSizePolynomials, ztMinusSi[i], bufTotalSize)
@@ -203,7 +212,7 @@ func BatchOpen(polynomials [][]fr.Element, digests []kzg.Digest, points [][]fr.E
 // at the i-th point
 // dataTranscript is some extra data that might be needed for Fiat Shamir, and is appended at the end
 // of the original transcript.
-func BatchVerify(proof OpeningProof, digests []kzg.Digest, points [][]fr.Element, hf hash.Hash, vk kzg.VerifyingKey, dataTranscript ...[]byte) error {
+func BatchVerify(proof OpeningProof, digests []kzg.Digest, points []PointsSet, hf hash.Hash, vk kzg.VerifyingKey, dataTranscript ...[]byte) error {
 
 	if len(digests) != len(proof.ClaimedValues) {
 		return ErrInvalidNumberOfPoints
@@ -216,7 +225,7 @@ func BatchVerify(proof OpeningProof, digests []kzg.Digest, points [][]fr.Element
 	fs := fiatshamir.NewTranscript(hf, "gamma", "z")
 
 	// derive γ
-	gamma, err := deriveChallenge("gamma", points, digests, fs, dataTranscript...)
+	gamma, err := deriveChallenge("gamma", flatten(points), digests, fs, dataTranscript...)
 	if err != nil {
 		return err
 	}
@@ -241,7 +250,7 @@ func BatchVerify(proof OpeningProof, digests []kzg.Digest, points [][]fr.Element
 		gammaiZTminusSiz[i] = eval(ztMinusSi, z)                 // Z_{T-S_{i}}(z)
 		gammaiZTminusSiz[i].Mul(&accGamma, &gammaiZTminusSiz[i]) // \gamma^{i} Z_{T-S_{i}}(z)
 
-		ri[i] = interpolate(points[i], proof.ClaimedValues[i])
+		ri[i] = interpolate(points[i].Points, proof.ClaimedValues[i])
 		riz := eval(ri[i], z)               // r_{i}(z)
 		tmp.Mul(&gammaiZTminusSiz[i], &riz) // Z_{T-S_{i}}(z)r_{i}(z)
 		sumGammaiZTminusSiRiz.Add(&sumGammaiZTminusSiRiz, &tmp)
@@ -302,14 +311,12 @@ func BatchVerify(proof OpeningProof, digests []kzg.Digest, points [][]fr.Element
 
 // deriveChallenge derives a challenge using Fiat Shamir to polynomials.
 // The arguments are added to the transcript in the order in which they are given.
-func deriveChallenge(name string, points [][]fr.Element, digests []kzg.Digest, t *fiatshamir.Transcript, dataTranscript ...[]byte) (fr.Element, error) {
+func deriveChallenge(name string, points []fr.Element, digests []kzg.Digest, t *fiatshamir.Transcript, dataTranscript ...[]byte) (fr.Element, error) {
 
 	// derive the challenge gamma, binded to the point and the commitments
 	for i := range points {
-		for j := range points[i] {
-			if err := t.Bind(name, points[i][j].Marshal()); err != nil {
-				return fr.Element{}, err
-			}
+		if err := t.Bind(name, points[i].Marshal()); err != nil {
+			return fr.Element{}, err
 		}
 	}
 	for i := range digests {
@@ -337,14 +344,14 @@ func deriveChallenge(name string, points [][]fr.Element, digests []kzg.Digest, t
 // ------------------------------
 // utils
 
-func flatten(x [][]fr.Element) []fr.Element {
+func flatten(x []PointsSet) []fr.Element {
 	nbPoints := 0
 	for i := 0; i < len(x); i++ {
-		nbPoints += len(x[i])
+		nbPoints += len(x[i].Points)
 	}
 	res := make([]fr.Element, 0, nbPoints)
 	for i := 0; i < len(x); i++ {
-		res = append(res, x[i]...)
+		res = append(res, x[i].Points...)
 	}
 	return res
 }
@@ -388,17 +395,17 @@ func multiplyLinearFactor(f []fr.Element, a fr.Element) []fr.Element {
 }
 
 // returns S_{T\Sᵢ} where Sᵢ=x[i]
-func buildZtMinusSi(x [][]fr.Element, i int) []fr.Element {
+func buildZtMinusSi(x []PointsSet, i int) []fr.Element {
 	nbPoints := 0
 	for i := 0; i < len(x); i++ {
-		nbPoints += len(x[i])
+		nbPoints += len(x[i].Points)
 	}
-	bufPoints := make([]fr.Element, 0, nbPoints-len(x[i]))
+	bufPoints := make([]fr.Element, 0, nbPoints-len(x[i].Points))
 	for j := 0; j < i; j++ {
-		bufPoints = append(bufPoints, x[j]...)
+		bufPoints = append(bufPoints, x[j].Points...)
 	}
 	for j := i + 1; j < len(x); j++ {
-		bufPoints = append(bufPoints, x[j]...)
+		bufPoints = append(bufPoints, x[j].Points...)
 	}
 	ztMinusSi := buildVanishingPoly(bufPoints)
 	return ztMinusSi
