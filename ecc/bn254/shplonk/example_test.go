@@ -24,9 +24,6 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/kzg"
 )
 
-// This example shows how to batch open a list of polynomials on a set of points,
-// where each polynomial is opened on its own set of point.
-// That is the i-th polynomial f_i is opened on  set of point S_i.
 func Example_batchOpen() {
 
 	const nbPolynomials = 10

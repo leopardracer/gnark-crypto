@@ -135,10 +135,10 @@ func BatchOpen(p [][][]fr.Element, digests []kzg.Digest, points [][]fr.Element, 
 	// step 4: compute the associated roots, that is for each point p corresponding
 	// to a pack i of polynomials, we extend to <p, ω p, .., ωᵗ⁻¹p> if
 	// the i-th pack contains t polynomials where ω is a t-th root of 1
-	newPoints := make([][]fr.Element, len(points))
+	newPoints := make([]shplonk.PointsSet, len(points))
 	var err error
 	for i := 0; i < len(p); i++ {
-		newPoints[i], err = extendSet(points[i], nextDivisorRminusOnePerPack[i])
+		newPoints[i].Points, err = extendSet(points[i], nextDivisorRminusOnePerPack[i])
 		if err != nil {
 			return res, err
 		}
@@ -204,11 +204,11 @@ func BatchVerify(proof OpeningProof, digests []kzg.Digest, points [][]fr.Element
 	}
 
 	// step 2: verify the embedded shplonk proof
-	extendedPoints := make([][]fr.Element, len(points))
+	extendedPoints := make([]shplonk.PointsSet, len(points))
 	var err error
 	for i := 0; i < len(points); i++ {
 		t := len(proof.ClaimedValues[i])
-		extendedPoints[i], err = extendSet(points[i], t)
+		extendedPoints[i].Points, err = extendSet(points[i], t)
 		if err != nil {
 			return err
 		}

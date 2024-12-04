@@ -87,11 +87,11 @@ func TestOpening(t *testing.T) {
 		digests[i], _ = kzg.Commit(polys[i], testSrs.Pk)
 	}
 
-	points := make([][]fr.Element, nbPolys)
+	points := make([]PointsSet, nbPolys)
 	for i := 0; i < nbPolys; i++ {
-		points[i] = make([]fr.Element, i+2)
+		points[i].Points = make([]fr.Element, i+2)
 		for j := 0; j < i+2; j++ {
-			points[i][j].SetRandom()
+			points[i].Points[j].SetRandom()
 		}
 	}
 
@@ -113,15 +113,15 @@ func TestOpening(t *testing.T) {
 func TestBuildZtMinusSi(t *testing.T) {
 
 	nbSi := 10
-	points := make([][]fr.Element, nbSi)
+	points := make([]PointsSet, nbSi)
 	sizeSi := make([]int, nbSi)
 	nbPoints := 0
 	for i := 0; i < nbSi; i++ {
 		sizeSi[i] = 5 + i
 		nbPoints += sizeSi[i]
-		points[i] = make([]fr.Element, sizeSi[i])
+		points[i].Points = make([]fr.Element, sizeSi[i])
 		for j := 0; j < sizeSi[i]; j++ {
-			points[i][j].SetRandom()
+			points[i].Points[j].SetRandom()
 		}
 	}
 	for i := 0; i < nbSi; i++ {
@@ -132,7 +132,7 @@ func TestBuildZtMinusSi(t *testing.T) {
 		for j := 0; j < nbSi; j++ {
 			if j == i {
 				for k := 0; k < sizeSi[j]; k++ {
-					y := eval(ztMinusSi, points[j][k])
+					y := eval(ztMinusSi, points[j].Points[k])
 					if y.IsZero() {
 						t.Fatal("Z_{T-S_{i}}(S_{i}) should not be zero")
 					}
@@ -140,7 +140,7 @@ func TestBuildZtMinusSi(t *testing.T) {
 				continue
 			}
 			for k := 0; k < sizeSi[j]; k++ {
-				y := eval(ztMinusSi, points[j][k])
+				y := eval(ztMinusSi, points[j].Points[k])
 				if !y.IsZero() {
 					t.Fatal("Z_{T-S_{i}}(S_{j}) should be zero")
 				}
